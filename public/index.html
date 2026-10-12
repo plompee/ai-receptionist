@@ -4,104 +4,188 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Receptionist Studio</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f8cff'/%3E%3Cpath d='M11 9c1 4 4 9 10 12l2-3 4 2-1 4c-9 0-17-8-17-17l4-1 2 4z' fill='white'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%235b8cff'/%3E%3Cpath d='M11 9c1 4 4 9 10 12l2-3 4 2-1 4c-9 0-17-8-17-17l4-1 2 4z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand"><span class="logo">☎</span><b>AI Receptionist Studio</b></div>
-  <div class="company-pick">
-    <label for="company">Business</label>
-    <select id="company"></select>
-    <button class="ghost" id="new-company" type="button">+ New</button>
-  </div>
-  <span class="key" id="key-status"></span>
-</header>
+<aside class="side">
+  <div class="brand"><span class="brand-logo">☎</span><div><b>Receptionist</b><small>Studio</small></div></div>
+  <p class="side-label">Businesses</p>
+  <nav class="biz-list" id="biz-list" aria-label="Businesses"></nav>
+  <button class="btn ghost full" id="new-biz" type="button">＋ New business</button>
+  <div class="side-foot" id="key-status"></div>
+</aside>
 
-<nav class="tabs" role="tablist">
-  <button role="tab" aria-selected="true" data-tab="call" type="button">Call</button>
-  <button role="tab" aria-selected="false" data-tab="setup" type="button">Setup</button>
-  <button role="tab" aria-selected="false" data-tab="activity" type="button">Activity</button>
-</nav>
-
-<main>
-  <!-- CALL -->
-  <section class="panel" id="tab-call">
-    <div class="phone">
-      <div class="phone-head">
-        <div><b id="call-company"></b><span id="call-state">Ready</span></div>
-        <label class="switch"><input type="checkbox" id="speak" checked> Speak replies</label>
-      </div>
-      <ol class="transcript" id="transcript" aria-live="polite"></ol>
-      <div class="controls" id="idle-controls">
-        <button class="primary big" id="start" type="button">☎ Start call</button>
-        <p class="hint">You play the caller. Talk with the mic or type — the AI answers as this business's receptionist.</p>
-      </div>
-      <form class="controls hidden" id="talk">
-        <button class="mic" id="mic" type="button" aria-label="Speak">🎤</button>
-        <input id="say" maxlength="1000" placeholder="Type what the caller says…" autocomplete="off">
-        <button class="primary" type="submit">Send</button>
-        <button class="danger" id="hangup" type="button">Hang up</button>
-      </form>
+<div class="main">
+  <header class="bar">
+    <div class="bar-title">
+      <span class="biz-avatar" id="bar-avatar"></span>
+      <div><h1 id="bar-name">—</h1><p id="bar-sub"></p></div>
     </div>
-    <aside class="tips">
-      <h3>Try saying</h3>
-      <ul id="tips"></ul>
-    </aside>
+    <div class="pills" id="bar-pills"></div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="call" aria-selected="true" type="button">📞 Call</button>
+    <button role="tab" data-tab="diary" aria-selected="false" type="button">📅 Diary</button>
+    <button role="tab" data-tab="activity" aria-selected="false" type="button">📊 Activity</button>
+    <button role="tab" data-tab="setup" aria-selected="false" type="button">⚙️ Setup</button>
+  </nav>
+
+  <!-- CALL -->
+  <section class="view" id="view-call">
+    <div class="call-grid">
+      <div class="phone" id="phone">
+        <div class="phone-top">
+          <div class="persona">
+            <span class="persona-avatar"><i></i><b id="persona-initials"></b></span>
+            <div><b id="persona-name">Receptionist</b><small id="persona-biz"></small></div>
+          </div>
+          <div class="call-meta">
+            <span class="state" id="call-state"><i></i>Ready</span>
+            <span class="timer" id="call-timer">00:00</span>
+          </div>
+        </div>
+        <ol class="transcript" id="transcript" aria-live="polite">
+          <li class="empty-call"><span>📞</span><p>Press <b>Start call</b> and play the caller.<br>Talk with the mic or type.</p></li>
+        </ol>
+        <div class="typing hidden" id="typing"><i></i><i></i><i></i></div>
+        <div class="phone-bottom" id="idle-controls">
+          <label class="mini">Caller language <select id="call-lang"></select></label>
+          <label class="mini toggle"><input type="checkbox" id="speak" checked><span></span> Speak replies</label>
+          <button class="btn start" id="start" type="button">📞 Start call</button>
+        </div>
+        <form class="phone-bottom talk hidden" id="talk">
+          <button class="round mic" id="mic" type="button" aria-label="Talk with the microphone" title="Talk">🎙️</button>
+          <input id="say" maxlength="1000" placeholder="Type what the caller says…" autocomplete="off">
+          <button class="round send" type="submit" aria-label="Send">➤</button>
+          <button class="round hang" id="hangup" type="button" aria-label="Hang up" title="Hang up">✕</button>
+        </form>
+      </div>
+
+      <div class="call-side">
+        <div class="card">
+          <h3>Caller</h3>
+          <dl class="caller" id="caller"><dt>Name</dt><dd>—</dd><dt>Phone</dt><dd>—</dd></dl>
+        </div>
+        <div class="card">
+          <h3>Actions this call</h3>
+          <ol class="timeline" id="timeline"><li class="muted">Nothing yet.</li></ol>
+        </div>
+        <div class="card">
+          <h3>Try saying</h3>
+          <div class="tips" id="tips"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- SETUP -->
-  <section class="panel hidden" id="tab-setup">
-    <form id="setup" class="setup">
-      <div class="grid2">
-        <label>Business name<input name="name" maxlength="80" required></label>
-        <label>Business type<input name="industry" maxlength="60" placeholder="e.g. Dental clinic"></label>
-      </div>
-      <label>Greeting (first thing the receptionist says)<input name="greeting" maxlength="200"></label>
-      <label>Tone of voice<input name="tone" maxlength="200" placeholder="e.g. Warm, professional, British English"></label>
-      <label>Services &amp; prices<textarea name="services" rows="3" maxlength="2000"></textarea></label>
-      <label>Facts, policies &amp; FAQs (one per line)<textarea name="faqs" rows="6" maxlength="4000"></textarea></label>
-
-      <fieldset>
-        <legend>What the receptionist may do</legend>
-        <label class="check"><input type="checkbox" name="task-bookings"> Book appointments</label>
-        <label class="check"><input type="checkbox" name="task-messages"> Take messages</label>
-        <label class="check"><input type="checkbox" name="task-transfers"> Transfer calls to departments</label>
-        <label class="check"><input type="checkbox" name="task-spamFilter"> Block spam &amp; sales calls</label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Opening hours</legend>
-        <label class="inline">Appointment length
-          <select name="appointmentMinutes"><option>15</option><option>20</option><option>30</option><option>45</option><option>60</option><option>90</option></select> minutes
-        </label>
-        <div class="hours" id="hours"></div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Departments for transfers</legend>
-        <div id="departments"></div>
-        <button class="ghost" id="add-dept" type="button">+ Add department</button>
-      </fieldset>
-
-      <div class="actions">
-        <button class="primary" type="submit">Save</button>
-        <button class="danger ghost" id="delete" type="button">Delete business</button>
-        <span class="saved" id="saved"></span>
-      </div>
-    </form>
+  <!-- DIARY -->
+  <section class="view hidden" id="view-diary">
+    <div class="diary-head">
+      <div class="seg"><button class="btn ghost" id="wk-prev" type="button">‹</button><button class="btn ghost" id="wk-today" type="button">This week</button><button class="btn ghost" id="wk-next" type="button">›</button></div>
+      <h2 id="wk-label"></h2>
+    </div>
+    <div class="week" id="week"></div>
   </section>
 
   <!-- ACTIVITY -->
-  <section class="panel hidden" id="tab-activity">
-    <div class="cards">
-      <article><h3>Bookings</h3><div id="act-bookings"></div></article>
-      <article><h3>Messages</h3><div id="act-messages"></div></article>
-      <article><h3>Transfers</h3><div id="act-transfers"></div></article>
-      <article class="wide"><h3>Calls</h3><div id="act-calls"></div></article>
+  <section class="view hidden" id="view-activity">
+    <div class="stats" id="stats"></div>
+    <div class="act-grid">
+      <div class="card"><h3>Messages</h3><div id="act-messages"></div></div>
+      <div class="card"><h3>Transfers</h3><div id="act-transfers"></div></div>
+      <div class="card wide"><h3>Call log</h3><div id="act-calls"></div></div>
     </div>
   </section>
-</main>
+
+  <!-- SETUP -->
+  <section class="view hidden" id="view-setup">
+    <form id="setup" class="setup" novalidate>
+      <div class="card" id="templates-card">
+        <h3>Start from a template</h3>
+        <p class="muted">Fills everything in with sensible defaults — then make it yours.</p>
+        <div class="templates" id="templates"></div>
+      </div>
+
+      <div class="card">
+        <h3>Basics</h3>
+        <div class="grid3">
+          <label>Business name<input name="name" maxlength="80" required></label>
+          <label>Business type<input name="industry" maxlength="60" placeholder="e.g. Dental clinic"></label>
+          <label>Receptionist's name<input name="persona" maxlength="30" placeholder="e.g. Ava"></label>
+        </div>
+        <label>Greeting — the first thing callers hear<input name="greeting" maxlength="240"></label>
+        <label class="toggle"><input type="checkbox" name="recordingNotice"><span></span> Tell callers the call may be recorded</label>
+        <div class="field"><span class="field-label">Languages it can speak</span><div class="chips" id="languages"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>Voice &amp; personality</h3>
+        <label>Tone of voice<input name="tone" maxlength="200" placeholder="e.g. Warm, professional, British English"></label>
+        <div class="grid2">
+          <div class="field"><span class="field-label">Answer length</span>
+            <div class="seg" data-seg="answerStyle"><button type="button" data-v="short">Short</button><button type="button" data-v="balanced">Balanced</button><button type="button" data-v="detailed">Detailed</button></div></div>
+          <div class="field"><span class="field-label">Answer quality <small class="muted" id="quality-hint"></small></span>
+            <div class="seg" data-seg="quality"><button type="button" data-v="fast">Fast</button><button type="button" data-v="balanced">Balanced</button><button type="button" data-v="best">Best</button></div></div>
+        </div>
+        <div class="grid2">
+          <label>Voice (in this browser)<select name="voice"></select></label>
+          <label>Speaking speed <span class="muted" id="rate-out"></span><input type="range" name="rate" min="0.7" max="1.4" step="0.05"></label>
+        </div>
+        <button class="btn ghost" id="preview-voice" type="button">▶ Preview voice</button>
+      </div>
+
+      <div class="card">
+        <h3>Services</h3>
+        <div class="services" id="services"></div>
+        <button class="btn ghost" id="add-service" type="button">＋ Add service</button>
+      </div>
+
+      <div class="card">
+        <h3>Knowledge</h3>
+        <label>Facts, policies &amp; FAQs <small class="muted">one per line — address, prices, parking, cancellation policy…</small><textarea name="facts" rows="6" maxlength="5000"></textarea></label>
+        <label>Emergency instructions <small class="muted">overrides everything else</small><textarea name="emergency" rows="2" maxlength="600"></textarea></label>
+        <label>Extra rules for the receptionist<textarea name="extraInstructions" rows="3" maxlength="1500" placeholder="e.g. Always ask new patients how they heard about us."></textarea></label>
+      </div>
+
+      <div class="card">
+        <h3>Hours &amp; booking rules</h3>
+        <div class="hours" id="hours"></div>
+        <div class="grid4">
+          <label>Slot grid<select name="appointmentMinutes"><option value="10">every 10 min</option><option value="15">every 15 min</option><option value="20">every 20 min</option><option value="30">every 30 min</option><option value="45">every 45 min</option><option value="60">every hour</option><option value="90">every 90 min</option></select></label>
+          <label>Minimum notice<select name="minNoticeHours"><option value="0">none</option><option value="1">1 hour</option><option value="2">2 hours</option><option value="4">4 hours</option><option value="24">1 day</option><option value="48">2 days</option></select></label>
+          <label>Book up to<select name="bookingWindowDays"><option value="7">1 week ahead</option><option value="14">2 weeks ahead</option><option value="30">1 month ahead</option><option value="60">2 months ahead</option><option value="90">3 months ahead</option><option value="365">1 year ahead</option></select></label>
+          <label>When closed<select name="afterHours"><option value="normal">Still book</option><option value="messages">Messages only</option></select></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>What the receptionist can do</h3>
+        <div class="abilities">
+          <label class="toggle"><input type="checkbox" name="task-bookings"><span></span> Book appointments</label>
+          <label class="toggle"><input type="checkbox" name="task-cancellations"><span></span> Find, cancel &amp; move bookings</label>
+          <label class="toggle"><input type="checkbox" name="task-messages"><span></span> Take messages</label>
+          <label class="toggle"><input type="checkbox" name="task-transfers"><span></span> Transfer to departments</label>
+          <label class="toggle"><input type="checkbox" name="task-spamFilter"><span></span> Block spam &amp; sales calls</label>
+          <label class="toggle"><input type="checkbox" name="collect-email"><span></span> Always get an email</label>
+          <label class="toggle"><input type="checkbox" name="collect-address"><span></span> Always get an address / postcode</label>
+        </div>
+        <h3 class="sub">Departments for transfers</h3>
+        <div id="departments"></div>
+        <button class="btn ghost" id="add-dept" type="button">＋ Add department</button>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn primary" type="submit">Save changes</button>
+        <span class="saved" id="saved"></span>
+        <button class="btn danger ghost" id="delete" type="button">Delete business</button>
+      </div>
+    </form>
+  </section>
+</div>
 
 <div class="toast" id="toast" role="alert"></div>
 <script type="module" src="app.js"></script>

@@ -6,11 +6,13 @@ Talk to it with your microphone (the browser's speech recognition and text-to-sp
 
 ## Features
 
-- **Any business, no code** — a setup page per company: greeting, tone, services and prices, facts/policies, opening hours, appointment length, departments.
-- **Switchable abilities** — turn bookings, messages, transfers and spam blocking on or off per business; the AI only gets the tools that are switched on.
-- **Rules enforced in code, not just the prompt** — bookings are checked against opening hours, the appointment grid and existing bookings (no double-booking, no bookings in the past); transfers only go to configured departments. A caller can't talk it into breaking the business's rules.
-- **Dashboard** — bookings, messages (with urgency), transfers, and every call's outcome, summary and full transcript.
-- **Voice** — speech-to-text in, British-English text-to-speech out (Chrome/Edge); typing works everywhere.
+- **Any business, no code** — start from one of 8 templates (estate agency, dental clinic, restaurant, salon, law firm, trades, garage, gym) and edit: receptionist name, greeting, tone, services with their own prices and lengths, facts and FAQs, emergency instructions, extra rules, opening hours and departments.
+- **Multilingual** — choose which languages it speaks (English, Ukrainian, Russian, Polish, Spanish and more); it replies in the caller's language, and the mic and voice follow the chosen call language.
+- **Switchable abilities** — bookings, finding/cancelling/moving bookings, messages, transfers and spam blocking; optionally always collect an email and/or address. The AI only gets the tools that are switched on.
+- **Booking rules enforced in code** — opening hours, per-service length (no overlaps), minimum notice, how far ahead people can book, and "messages only" when closed. A caller can't talk it into breaking the business's rules.
+- **Answer style & quality** — short / balanced / detailed replies, and fast / balanced / best quality (maps to Claude's effort level).
+- **Good phone manner** — offers two or three times instead of reading a list, reads details back before booking, says dates naturally, gets "next Tuesday" right (a two-week calendar is supplied each call) and is honest that it's an AI if asked.
+- **Dashboard** — live call screen with caller details and an action timeline, a week **Diary** with cancel, and **Activity** stats with messages, transfers and full call transcripts.
 
 ## Run it
 

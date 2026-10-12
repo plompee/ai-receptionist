@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import * as store from "./store.js";
-import { handleCallerTurn } from "./receptionist.js";
+import { handleCallerTurn, greetingFor } from "./receptionist.js";
+import { TEMPLATES } from "./templates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, "..", "public");
@@ -52,6 +53,7 @@ function finish(call, ended) {
 
 const routes = [
   ["GET", /^\/api\/status$/, () => ({ apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) })],
+  ["GET", /^\/api\/meta$/, () => ({ templates: TEMPLATES, languages: store.LANGUAGES })],
   ["GET", /^\/api\/companies$/, () => store.listCompanies()],
   ["POST", /^\/api\/companies$/, async (req) => store.createCompany(await readJson(req))],
   ["PUT", /^\/api\/companies\/([\w-]+)$/, async (req, [id]) => { needCompany(id); return store.updateCompany(id, await readJson(req)); }],
@@ -63,9 +65,10 @@ const routes = [
   }],
   ["POST", /^\/api\/calls$/, async (req) => {
     const company = needCompany((await readJson(req)).companyId);
-    const rec = store.addRecord("calls", { companyId: company.id, startedAt: new Date().toISOString(), outcome: null, summary: null, transcript: [{ who: "receptionist", text: company.greeting, at: new Date().toISOString() }] });
+    const greeting = greetingFor(company);
+    const rec = store.addRecord("calls", { companyId: company.id, startedAt: new Date().toISOString(), outcome: null, summary: null, transcript: [{ who: "receptionist", text: greeting, at: new Date().toISOString() }] });
     live.set(rec.id, { id: rec.id, companyId: company.id, messages: [], busy: false, lastSeen: Date.now() });
-    return { callId: rec.id, greeting: company.greeting };
+    return { callId: rec.id, greeting };
   }],
   ["POST", /^\/api\/calls\/([\w-]+)\/turn$/, async (req, [id]) => {
     const call = needCall(id), { text } = await readJson(req);
@@ -81,6 +84,11 @@ const routes = [
       if (out.ended) finish(call, out.ended);
       return out;
     } finally { call.busy = false; }
+  }],
+  ["POST", /^\/api\/bookings\/([\w-]+)\/cancel$/, (req, [id]) => {
+    const b = store.getRecord("bookings", id);
+    if (!b) throw new HttpError(404, "Booking not found");
+    return store.updateRecord("bookings", id, { status: "cancelled", cancelledAt: new Date().toISOString(), cancelledByCall: null });
   }],
   ["POST", /^\/api\/calls\/([\w-]+)\/hangup$/, (req, [id]) => {
     const call = live.get(id);

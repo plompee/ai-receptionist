@@ -25,25 +25,52 @@ function nextWeekday(day) {
   return tools.isoDate(d);
 }
 
-test("free slots follow opening hours, appointment length and the current time", () => {
-  const slots = tools.freeSlots(agency(), MONDAY, [], MONDAY_10_10);
-  assert.equal(slots[0], "10:30"); // 09:00 and 09:45 are already in the past
-  assert.equal(slots.at(-1), "16:30"); // 16:30 + 45 min = 17:15, the last slot that ends before 17:30
-  assert.deepEqual(tools.freeSlots(agency(), "2030-01-13", [], MONDAY_10_10), []); // Sunday: closed
-  assert.deepEqual(tools.freeSlots(agency(), "2029-12-31", [], MONDAY_10_10), []); // in the past
-  assert.deepEqual(tools.freeSlots(agency(), "2030-02-31", [], MONDAY_10_10), []); // not a real date
-  assert.ok(!tools.freeSlots(agency(), MONDAY, [{ date: MONDAY, time: "11:15" }], MONDAY_10_10).includes("11:15"));
+const EARLY = new Date(2030, 0, 7, 8, 0); // Monday 08:00, before opening
+
+test("free slots follow opening hours, service length, minimum notice and the booking window", () => {
+  const c = agency(); // 15-minute grid, 2 hours' notice, 60-day window, Mon 09:00-17:30
+  const slots = tools.freeSlots(c, MONDAY, [], MONDAY_10_10, 45);
+  assert.equal(slots[0], "12:15"); // 10:10 + 2h notice = 12:10 -> next 15-minute slot
+  assert.equal(slots.at(-1), "16:45"); // 16:45 + 45 min ends exactly at closing
+  assert.deepEqual(tools.freeSlots(c, "2030-01-13", [], MONDAY_10_10), []); // Sunday: closed
+  assert.deepEqual(tools.freeSlots(c, "2029-12-31", [], MONDAY_10_10), []); // in the past
+  assert.deepEqual(tools.freeSlots(c, "2030-02-31", [], MONDAY_10_10), []); // not a real date
+  assert.deepEqual(tools.freeSlots(c, "2030-03-20", [], MONDAY_10_10), []); // beyond the 60-day window
 });
 
-test("booking rejects closed days, taken slots and bad phone numbers, and accepts a valid slot", () => {
-  const book = (over) => tools.runTool(agency(), call, "book_appointment", { caller_name: "Priya Shah", phone: "07700 900412", date: MONDAY, time: "11:15", reason: "Valuation", ...over }, MONDAY_10_10);
+test("appointments can't overlap, whatever their lengths", () => {
+  const busy = [{ date: MONDAY, time: "11:00", minutes: 45, status: "booked" }, { date: MONDAY, time: "14:00", minutes: 30, status: "cancelled" }];
+  const s = tools.freeSlots(agency(), MONDAY, busy, EARLY, 45);
+  assert.ok(s.includes("10:15")); // ends 11:00, touches but doesn't overlap
+  for (const t of ["10:30", "10:45", "11:00", "11:30"]) assert.ok(!s.includes(t), `${t} overlaps the 11:00-11:45 booking`);
+  assert.ok(s.includes("11:45"));
+  assert.ok(s.includes("14:00")); // cancelled bookings free their slot
+});
+
+test("booking uses the service length; callers can find and cancel their bookings", () => {
+  const c = agency();
+  const book = (over) => tools.runTool(c, call, "book_appointment", { caller_name: "Priya Shah", phone: "07700 900412", date: MONDAY, time: "13:00", service: "Market valuation", notes: "none", ...over }, MONDAY_10_10);
   assert.equal(book({ date: "2030-01-13" }).isError, true); // Sunday
-  assert.equal(book({ time: "11:00" }).isError, true); // not on the 45-minute grid
+  assert.equal(book({ time: "11:00" }).isError, true); // inside the 2-hour notice period
   assert.equal(book({ phone: "call me" }).isError, true);
   const ok = book({});
-  assert.equal(ok.isError, undefined);
-  assert.match(ok.content, /Booked: Priya Shah, 2030-01-07 at 11:15/);
-  assert.equal(book({ caller_name: "Someone Else" }).isError, true); // now taken - no double booking
+  assert.equal(ok.isError, undefined, ok.content);
+  assert.match(ok.content, /Booked Market valuation for Priya Shah on 2030-01-07 at 13:00 \(45 min\)/);
+  assert.equal(book({ caller_name: "Someone Else", time: "13:30" }).isError, true); // overlaps 13:00-13:45
+
+  const found = tools.runTool(c, call, "find_bookings", { phone: "+44 7700 900412" }, MONDAY_10_10); // same number, other format
+  assert.match(found.content, /Market valuation on 2030-01-07 at 13:00/);
+  assert.equal(tools.runTool(c, call, "cancel_booking", { phone: "07700900412", date: MONDAY, time: "09:00" }, MONDAY_10_10).isError, true);
+  assert.match(tools.runTool(c, call, "cancel_booking", { phone: "07700900412", date: MONDAY, time: "13:00" }, MONDAY_10_10).content, /Cancelled/);
+  assert.equal(book({ caller_name: "Someone Else", time: "13:30" }).isError, undefined); // slot is free again
+});
+
+test("required extra details (email) are enforced", () => {
+  const dental = store.getCompany("brightsmile-dental");
+  const book = (email) => tools.runTool(dental, call, "book_appointment", { caller_name: "Ann Lee", phone: "07700 900111", date: "2030-01-08", time: "09:00", service: "Check-up", notes: "none", email }, EARLY);
+  assert.equal(book("not-an-email").isError, true);
+  assert.match(book("ann@example.com").content, /Booked Check-up/);
+  assert.ok(tools.toolsFor(dental).find((t) => t.name === "book_appointment").input_schema.required.includes("email"));
 });
 
 test("transfers only go to configured departments; end_call reports the outcome", () => {
@@ -54,7 +81,7 @@ test("transfers only go to configured departments; end_call reports the outcome"
 
 test("tools follow the business's switched-on tasks and are strict", () => {
   const names = (c) => tools.toolsFor(c).map((t) => t.name);
-  assert.deepEqual(names(agency()), ["check_availability", "book_appointment", "take_message", "transfer_call", "end_call"]);
+  assert.deepEqual(names(agency()), ["check_availability", "book_appointment", "find_bookings", "cancel_booking", "take_message", "transfer_call", "end_call"]);
   const dental = store.getCompany("brightsmile-dental");
   assert.ok(!names(dental).includes("transfer_call")); // transfers are off for the clinic
   for (const t of tools.toolsFor(agency())) {
@@ -68,27 +95,42 @@ test("company settings are validated", () => {
   const good = { ...agency() };
   assert.equal(store.validateCompany(good).name, "Hartley & Grove");
   assert.throws(() => store.validateCompany({ ...good, name: " " }), /Name is required/);
-  assert.throws(() => store.validateCompany({ ...good, appointmentMinutes: 7 }), /Appointment length/);
+  assert.throws(() => store.validateCompany({ ...good, appointmentMinutes: 7 }), /slot length/);
+  assert.throws(() => store.validateCompany({ ...good, services: [{ name: "A" }, { name: "a" }] }), /different name/);
+  assert.throws(() => store.validateCompany({ ...good, minNoticeHours: -1 }), /Minimum notice/);
+  assert.deepEqual(store.validateCompany({ ...good, languages: ["Klingon"] }).languages, ["English"]);
   assert.throws(() => store.validateCompany({ ...good, hours: { ...good.hours, mon: ["18:00", "09:00"] } }), /opening before closing/);
-  assert.throws(() => store.validateCompany({ ...good, faqs: "x".repeat(5000) }), /too long/);
+  assert.throws(() => store.validateCompany({ ...good, facts: "x".repeat(6000) }), /too long/);
   assert.equal(store.validateCompany({ ...good, greeting: "" }).greeting, "Hello, you've reached Hartley & Grove. How can I help?");
 });
 
-test("the system prompt describes the business and only its enabled abilities", () => {
+test("the system prompt describes the business, persona and only its enabled abilities", () => {
   const p = receptionist.systemPrompt(agency());
-  assert.match(p, /phone receptionist for Hartley & Grove/);
+  assert.match(p, /You are Ava, the receptionist at Hartley & Grove/);
   assert.match(p, /Sunday: closed/);
+  assert.match(p, /Market valuation \(Free\), 45 minutes/);
   assert.match(p, /Lettings \(Priya Grove\)/);
-  assert.doesNotMatch(receptionist.systemPrompt(store.getCompany("brightsmile-dental")), /Transfer to a person/);
+  assert.match(p, /Languages: English, Ukrainian, Polish/);
+  assert.match(p, /Emergencies - this overrides everything else/);
+  assert.match(p, /you're Hartley & Grove's AI receptionist/); // honest when asked
+  assert.doesNotMatch(receptionist.systemPrompt(store.getCompany("brightsmile-dental")), /Put the caller through/);
   assert.doesNotMatch(p, /\d{4}-\d{2}-\d{2}/); // no dates: the prompt must be identical across calls so it caches
+  assert.match(receptionist.greetingFor(store.getCompany("brightsmile-dental")), /calls may be recorded/);
+});
+
+test("the date context lists two weeks with weekdays", () => {
+  const ctx = receptionist.dateContext(MONDAY_10_10);
+  assert.match(ctx, /It is now 10:10 on Monday 7 January = 2030-01-07 \(today\)/);
+  assert.match(ctx, /Tuesday 8 January = 2030-01-08 \(tomorrow\)/);
+  assert.match(ctx, /Sunday 20 January = 2030-01-20/);
 });
 
 test("a caller turn runs the tool loop: availability → booking → spoken reply", async () => {
   const date = nextWeekday(2); // a Tuesday
   const requests = [];
   const scripted = [
-    { stop_reason: "tool_use", content: [{ type: "thinking", thinking: "", signature: "s1" }, { type: "tool_use", id: "t1", name: "check_availability", input: { date } }] },
-    { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t2", name: "book_appointment", input: { caller_name: "Tom Reed", phone: "+44 7700 900123", date, time: "09:45", reason: "Viewing" } }] },
+    { stop_reason: "tool_use", content: [{ type: "thinking", thinking: "", signature: "s1" }, { type: "tool_use", id: "t1", name: "check_availability", input: { date, service: "Viewing" } }] },
+    { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t2", name: "book_appointment", input: { caller_name: "Tom Reed", phone: "+44 7700 900123", date, time: "09:45", service: "Viewing", notes: "none" } }] },
     { stop_reason: "end_turn", content: [{ type: "text", text: "You're booked in for Tuesday at quarter to ten, Tom." }] },
   ];
   receptionist._setClientForTests({ beta: { messages: { create: async (params) => { requests.push(structuredClone(params)); return scripted.shift(); } } } });
@@ -104,7 +146,7 @@ test("a caller turn runs the tool loop: availability → booking → spoken repl
   // Request shape: right model, low effort, fallbacks on, cached system prompt, date as a mid-conversation system message.
   const first = requests[0];
   assert.equal(first.model, "claude-opus-5-5");
-  assert.equal(first.output_config.effort, "low");
+  assert.equal(first.output_config.effort, "low"); // quality "fast"
   assert.equal(first.fallbacks, "default");
   assert.deepEqual(first.betas, ["server-side-fallback-2026-07-01"]);
   assert.equal(first.system[0].cache_control.type, "ephemeral");

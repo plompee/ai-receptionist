@@ -38,6 +38,16 @@ const str = (v, max, field) => {
   return s;
 };
 
+export const LANGUAGES = ["English", "Ukrainian", "Russian", "Polish", "Spanish", "French", "German", "Italian", "Portuguese", "Romanian", "Arabic", "Hindi", "Chinese"];
+export const TASKS = ["bookings", "cancellations", "messages", "transfers", "spamFilter"];
+const SLOT_MINUTES = [10, 15, 20, 30, 45, 60, 90];
+const pick = (v, allowed, fallback) => (allowed.includes(v) ? v : fallback);
+const intIn = (v, min, max, field) => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < min || n > max) throw bad(`${field} must be a whole number from ${min} to ${max}`);
+  return n;
+};
+
 /** Validates and normalises company settings coming from the browser. Throws with a readable message. */
 export function validateCompany(input) {
   if (!input || typeof input !== "object") throw bad("Invalid company settings");
@@ -52,22 +62,40 @@ export function validateCompany(input) {
     }
     hours[d] = [h[0], h[1]];
   }
-  const minutes = Number(input.appointmentMinutes);
-  if (![15, 20, 30, 45, 60, 90].includes(minutes)) throw bad("Appointment length must be 15, 20, 30, 45, 60 or 90 minutes");
+  const slot = Number(input.appointmentMinutes);
+  if (!SLOT_MINUTES.includes(slot)) throw bad(`Booking slot length must be one of ${SLOT_MINUTES.join(", ")} minutes`);
+  const services = (Array.isArray(input.services) ? input.services : []).slice(0, 30).map((s, i) => ({
+    name: str(s?.name ?? "", 60, `Service ${i + 1} name`),
+    price: str(s?.price ?? "", 40, `Service ${i + 1} price`),
+    minutes: s?.minutes === "" || s?.minutes == null ? slot : intIn(s.minutes, 5, 480, `Service ${i + 1} length`),
+  })).filter((s) => s.name);
+  if (new Set(services.map((s) => s.name.toLowerCase())).size !== services.length) throw bad("Each service needs a different name");
   const departments = (Array.isArray(input.departments) ? input.departments : []).slice(0, 10).map((d, i) => ({
     name: str(d?.name ?? "", 40, `Department ${i + 1} name`),
     contact: str(d?.contact ?? "", 80, `Department ${i + 1} contact`),
   })).filter((d) => d.name);
-  const tasks = {};
-  for (const t of ["bookings", "messages", "transfers", "spamFilter"]) tasks[t] = Boolean(input.tasks?.[t]);
+  const tasks = Object.fromEntries(TASKS.map((t) => [t, Boolean(input.tasks?.[t])]));
+  const languages = (Array.isArray(input.languages) ? input.languages : []).filter((l) => LANGUAGES.includes(l));
   return {
     name,
     industry: str(input.industry ?? "", 60, "Business type"),
-    greeting: str(input.greeting ?? "", 200, "Greeting") || `Hello, you've reached ${name}. How can I help?`,
+    persona: str(input.persona ?? "", 30, "Receptionist name"),
+    languages: languages.length ? [...new Set(languages)] : ["English"],
+    greeting: str(input.greeting ?? "", 240, "Greeting") || `Hello, you've reached ${name}. How can I help?`,
+    recordingNotice: Boolean(input.recordingNotice),
     tone: str(input.tone ?? "", 200, "Tone"),
-    services: str(input.services ?? "", 2000, "Services"),
-    faqs: str(input.faqs ?? "", 4000, "FAQs"),
-    appointmentMinutes: minutes,
+    answerStyle: pick(input.answerStyle, ["short", "balanced", "detailed"], "balanced"),
+    quality: pick(input.quality, ["fast", "balanced", "best"], "fast"),
+    voice: { name: str(input.voice?.name ?? "", 100, "Voice"), rate: Math.min(1.4, Math.max(0.7, Number(input.voice?.rate) || 1)) },
+    services,
+    facts: str(input.facts ?? "", 5000, "Facts & FAQs"),
+    emergency: str(input.emergency ?? "", 600, "Emergency instructions"),
+    extraInstructions: str(input.extraInstructions ?? "", 1500, "Extra instructions"),
+    appointmentMinutes: slot,
+    minNoticeHours: intIn(input.minNoticeHours ?? 0, 0, 168, "Minimum notice (hours)"),
+    bookingWindowDays: intIn(input.bookingWindowDays ?? 60, 1, 365, "Booking window (days)"),
+    afterHours: pick(input.afterHours, ["normal", "messages"], "normal"),
+    collect: { email: Boolean(input.collect?.email), address: Boolean(input.collect?.address) },
     hours,
     tasks,
     departments,
@@ -114,6 +142,7 @@ export function updateRecord(kind, id, patch) {
   return row;
 }
 
+export const getRecord = (kind, id) => load()[kind].find((r) => r.id === id) || null;
 export const recordsFor = (kind, companyId) => load()[kind].filter((r) => r.companyId === companyId);
 export const getCallRecord = (id) => load().calls.find((r) => r.id === id) || null;
 

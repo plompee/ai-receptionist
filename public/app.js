@@ -1,103 +1,156 @@
-const $ = (s) => document.querySelector(s);
-const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const DAY_LABEL = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
-const ACTION_LABEL = { check_availability: "Checked diary", book_appointment: "Booked", take_message: "Message taken", transfer_call: "Transferred", end_call: "Call ended" };
+import { $, $$, h, api, toast, state, initials, readableDates, LANG_CODES } from "./ui.js";
+import { initSetup, fillSetup, blankCompany } from "./setup.js";
+import { initDiary, renderDiary, renderActivity } from "./views.js";
 
-let companies = [], current = null, callId = null;
+const ICON = { check_availability: "🔎", book_appointment: "✅", find_bookings: "📋", cancel_booking: "🗑️", take_message: "✉️", transfer_call: "↪️", end_call: "📴" };
+const LABEL = { check_availability: "Checked the diary", book_appointment: "Booked", find_bookings: "Looked up bookings", cancel_booking: "Cancelled", take_message: "Took a message", transfer_call: "Transferred", end_call: "Ended the call" };
+const ABILITY = { bookings: "Bookings", cancellations: "Changes", messages: "Messages", transfers: "Transfers", spamFilter: "Spam filter" };
+let tab = "call", callId = null, timer = null, startedAt = 0;
 
-// Builds DOM nodes; text always goes in via textContent, never innerHTML.
-function h(tag, attrs = {}, ...kids) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) k === "class" ? (el.className = v) : el.setAttribute(k, v);
-  for (const k of kids.flat()) if (k != null) el.append(k instanceof Node ? k : String(k));
-  return el;
+/* ---------- Sidebar, header, tabs ---------- */
+function renderSidebar() {
+  $("#biz-list").replaceChildren(...state.companies.map((c) => h("button", {
+    type: "button", class: `biz${state.current?.id === c.id ? " active" : ""}`, onclick: () => select(c.id),
+  }, h("span", { class: "biz-avatar" }, initials(c.name)), h("span", {}, h("b", {}, c.name), h("small", {}, c.industry || "Business")))));
 }
-
-async function api(method, url, body) {
-  const res = await fetch(url, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
+function renderBar() {
+  const c = state.current;
+  $("#bar-avatar").textContent = c ? initials(c.name) : "＋";
+  $("#bar-name").textContent = c ? c.name : "New business";
+  $("#bar-sub").textContent = c ? `${c.industry || "Business"} · receptionist ${c.persona || "unnamed"} · ${c.languages.join(", ")}` : "Pick a template or fill in the details, then save.";
+  $("#bar-pills").replaceChildren(...(c ? Object.entries(c.tasks).map(([k, on]) => h("span", { class: `pill${on ? " on" : ""}` }, `${on ? "●" : "○"} ${ABILITY[k]}`)) : []));
 }
-
-function toast(msg) {
-  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 5000);
-}
-
-/* ---------- Tabs & company picker ---------- */
-document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 function showTab(name) {
-  document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
-  for (const t of ["call", "setup", "activity"]) $(`#tab-${t}`).classList.toggle("hidden", t !== name);
-  if (name === "activity") loadActivity();
+  tab = name;
+  $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  $$(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `view-${name}`));
+  if (name === "diary") renderDiary();
+  if (name === "activity") renderActivity();
 }
+$$("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+  if (!state.current && b.dataset.tab !== "setup") return toast("Save the business first.", "info");
+  showTab(b.dataset.tab);
+}));
 
-async function loadCompanies(selectId) {
-  companies = await api("GET", "/api/companies");
-  const sel = $("#company");
-  sel.replaceChildren(...companies.map((c) => h("option", { value: c.id }, c.name)));
-  if (!companies.length) { current = null; fillSetup(blankCompany()); showTab("setup"); return; }
-  sel.value = selectId && companies.some((c) => c.id === selectId) ? selectId : companies[0].id;
-  selectCompany(sel.value);
-}
-$("#company").addEventListener("change", (e) => selectCompany(e.target.value));
-function selectCompany(id) {
+function select(id) {
   if (callId) hangUp();
-  current = companies.find((c) => c.id === id);
-  $("#call-company").textContent = current.name;
-  fillSetup(current);
+  state.current = state.companies.find((c) => c.id === id) || null;
+  renderSidebar(); renderBar();
+  if (!state.current) return;
+  fillSetup(state.current);
+  resetCallScreen();
+  if (tab === "diary") renderDiary();
+  if (tab === "activity") renderActivity();
+}
+async function reload(selectId) {
+  state.companies = await api("GET", "/api/companies");
+  if (!state.companies.length) { newBusiness(); renderSidebar(); return; }
+  select(state.companies.some((c) => c.id === selectId) ? selectId : state.companies[0].id);
+}
+function newBusiness() {
+  if (callId) hangUp();
+  state.current = null;
+  renderSidebar(); renderBar();
+  fillSetup(blankCompany(), { isNew: true });
+  showTab("setup");
+}
+$("#new-biz").addEventListener("click", newBusiness);
+
+/* ---------- Call screen ---------- */
+function resetCallScreen() {
+  const c = state.current;
+  $("#persona-name").textContent = c.persona || "Receptionist";
+  $("#persona-biz").textContent = c.name;
+  $("#persona-initials").textContent = initials(c.persona || c.name);
+  $("#call-lang").replaceChildren(...c.languages.map((l) => h("option", { value: l }, l)));
+  $("#transcript").replaceChildren(h("li", { class: "empty-call" }, h("span", {}, "📞"), h("p", {}, "Press ", h("b", {}, "Start call"), " and play the caller.", h("br"), "Talk with the mic or type.")));
+  $("#timeline").replaceChildren(h("li", { class: "muted" }, "Nothing yet."));
+  setCaller({});
+  setState("Ready", "idle");
+  $("#call-timer").textContent = "00:00";
   renderTips();
-  $("#transcript").replaceChildren();
-  if (!$("#tab-activity").classList.contains("hidden")) loadActivity();
 }
-$("#new-company").addEventListener("click", () => { current = null; fillSetup(blankCompany()); showTab("setup"); });
-
 function renderTips() {
-  const t = current.tasks, tips = [];
-  if (t.bookings) tips.push("I'd like to book an appointment for tomorrow morning.");
-  if (t.messages) tips.push("Can someone call me back about my account?");
-  if (t.transfers && current.departments.length) tips.push(`Can I speak to someone in ${current.departments[0].name}?`);
-  if (t.spamFilter) tips.push("Congratulations! You've won a free cruise, press 1 to claim.");
-  tips.push("What are your opening hours on Saturday?");
-  $("#tips").replaceChildren(...tips.map((s) => h("li", {}, h("button", { type: "button", class: "tip" }, s))));
-  $("#tips").querySelectorAll(".tip").forEach((b) => b.addEventListener("click", () => {
-    if (!callId) return toast("Start the call first.");
-    $("#say").value = b.textContent; $("#talk").requestSubmit();
-  }));
+  const c = state.current, tips = [];
+  const svc = c.services[0]?.name?.toLowerCase();
+  if (c.tasks.bookings) tips.push(`Hi, I'd like to book ${svc ? `a ${svc}` : "an appointment"} next week, please.`);
+  if (c.tasks.cancellations) tips.push("I need to cancel my appointment — my number is 07700 900412.");
+  if (c.tasks.messages) tips.push("Could someone call me back this afternoon?");
+  if (c.tasks.transfers && c.departments.length) tips.push(`Can I speak to someone in ${c.departments[0].name}?`);
+  tips.push("How much does it cost, and where are you?");
+  if (c.tasks.spamFilter) tips.push("Congratulations! You've won a free cruise, press 1 to claim.");
+  if (c.languages.length > 1) tips.push(c.languages.includes("Ukrainian") ? "Добрий день, чи можна записатися на завтра?" : `(Try speaking ${c.languages[1]})`);
+  tips.push("Are you a real person?");
+  $("#tips").replaceChildren(...tips.map((t) => h("button", { type: "button", class: "tip", onclick: () => {
+    if (!callId) return toast("Start the call first.", "info");
+    $("#say").value = t; $("#talk").requestSubmit();
+  } }, t)));
 }
-
-/* ---------- Call ---------- */
-function bubble(who, text, actions = []) {
-  const li = h("li", { class: who }, h("span", { class: "who" }, who === "caller" ? "Caller" : "Receptionist"), h("p", {}, text));
-  for (const a of actions) {
-    if (a.tool === "check_availability") continue;
-    li.append(h("span", { class: `chip ${a.ok ? "ok" : "err"}` }, `${a.ok ? "✓" : "⚠"} ${ACTION_LABEL[a.tool] || a.tool}: ${a.result}`));
-  }
+function setState(text, mode) {
+  $("#call-state").lastChild.textContent = text;
+  $("#phone").dataset.mode = mode;
+}
+function setCaller(info) {
+  const rows = [["Name", info.caller_name], ["Phone", info.phone], ["Email", info.email], ["Address", info.address], ["Service", info.service]].filter(([k, v]) => v || k === "Name" || k === "Phone");
+  $("#caller").replaceChildren(...rows.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v || "—")]));
+}
+let caller = {};
+function bubble(who, text) {
+  $(".empty-call")?.remove();
+  const li = h("li", { class: who }, h("span", { class: "avatar" }, who === "caller" ? "🙂" : initials(state.current.persona || state.current.name)), h("div", { class: "msg" }, h("p", {}, text)));
   $("#transcript").append(li);
   li.scrollIntoView({ block: "end", behavior: "smooth" });
+  return li;
 }
-function setState(text) { $("#call-state").textContent = text; }
+/** Short, readable version of a tool result for the UI (the model still gets the full text). */
+function summarize(a) {
+  const free = /^Free (\d+)-minute start times on (\S+): (.*?)\. Offer/.exec(a.result);
+  if (free) return `${free[3].split(", ").length} free ${free[1]}-minute slots on ${readableDates(free[2])}`;
+  return readableDates(a.result);
+}
+function addActions(li, actions) {
+  if (!actions.length) return;
+  if ($("#timeline .muted")) $("#timeline").replaceChildren();
+  for (const a of actions) {
+    for (const k of ["caller_name", "phone", "email", "address", "service"]) if (a.input?.[k]) caller[k] = a.input[k];
+    $("#timeline").append(h("li", { class: a.ok ? "ok" : "warn" }, h("span", {}, ICON[a.tool] || "•"), h("div", {}, h("b", {}, LABEL[a.tool] || a.tool), h("small", {}, summarize(a)))));
+    if (a.tool !== "check_availability" && a.tool !== "find_bookings") {
+      $(".msg", li).append(h("div", { class: `action ${a.ok ? "ok" : "warn"}` }, h("span", {}, ICON[a.tool] || "•"), summarize(a)));
+    }
+  }
+  setCaller(caller);
+}
+
+function voiceFor(lang) {
+  const voices = speechSynthesis.getVoices(), c = state.current, code = LANG_CODES[lang] || "en-GB";
+  const chosen = voices.find((v) => v.name === c.voice.name);
+  if (chosen && chosen.lang.slice(0, 2) === code.slice(0, 2)) return chosen;
+  return voices.find((v) => v.lang === code) || voices.find((v) => v.lang.startsWith(code.slice(0, 2))) || null;
+}
 function speak(text) {
   if (!$("#speak").checked || !("speechSynthesis" in window) || !text) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.voice = speechSynthesis.getVoices().find((v) => v.lang === "en-GB") || null;
-  u.lang = "en-GB";
+  const u = new SpeechSynthesisUtterance(text), lang = $("#call-lang").value;
+  u.voice = voiceFor(lang); u.lang = u.voice?.lang || LANG_CODES[lang] || "en-GB"; u.rate = state.current.voice.rate;
+  u.onstart = () => $("#phone").classList.add("speaking");
+  u.onend = u.onerror = () => $("#phone").classList.remove("speaking");
   speechSynthesis.speak(u);
+}
+function tick() {
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  $("#call-timer").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
 $("#start").addEventListener("click", async () => {
-  if (!current) return toast("Save a business first.");
   try {
-    const { callId: id, greeting } = await api("POST", "/api/calls", { companyId: current.id });
-    callId = id;
-    $("#transcript").replaceChildren();
+    const { callId: id, greeting } = await api("POST", "/api/calls", { companyId: state.current.id });
+    callId = id; caller = {};
+    resetCallScreen();
     bubble("receptionist", greeting);
     speak(greeting);
-    $("#idle-controls").classList.add("hidden");
-    $("#talk").classList.remove("hidden");
-    setState("On call");
+    $("#idle-controls").classList.add("hidden"); $("#talk").classList.remove("hidden");
+    setState("On call", "live");
+    startedAt = Date.now(); clearInterval(timer); timer = setInterval(tick, 1000);
     $("#say").focus();
   } catch (e) { toast(e.message); }
 });
@@ -105,28 +158,29 @@ $("#start").addEventListener("click", async () => {
 $("#talk").addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = $("#say").value.trim();
-  if (!text || !callId) return;
+  if (!text || !callId || $("#talk").classList.contains("busy")) return;
   $("#say").value = "";
   bubble("caller", text);
-  setState("Receptionist is answering…");
-  $("#talk").classList.add("busy");
+  setState(`${state.current.persona || "Receptionist"} is thinking…`, "thinking");
+  $("#typing").classList.remove("hidden"); $("#talk").classList.add("busy");
   try {
     const out = await api("POST", `/api/calls/${callId}/turn`, { text });
-    bubble("receptionist", out.reply || "…", out.actions);
+    $("#typing").classList.add("hidden");
+    const li = bubble("receptionist", out.reply || "…");
+    addActions(li, out.actions);
     speak(out.reply);
     if (out.ended) endCallUi(`Call ended · ${out.ended.outcome.replaceAll("_", " ")}`);
-    else setState("On call");
+    else setState("On call", "live");
   } catch (err) {
-    toast(err.message);
-    setState("On call");
+    $("#typing").classList.add("hidden");
+    toast(err.message); setState("On call", "live");
   } finally { $("#talk").classList.remove("busy"); }
 });
 
-function endCallUi(state) {
-  callId = null;
-  $("#talk").classList.add("hidden");
-  $("#idle-controls").classList.remove("hidden");
-  setState(state);
+function endCallUi(text) {
+  callId = null; clearInterval(timer);
+  $("#talk").classList.add("hidden"); $("#idle-controls").classList.remove("hidden");
+  setState(text, "ended");
 }
 function hangUp() {
   if (callId) api("POST", `/api/calls/${callId}/hangup`).catch(() => {});
@@ -135,104 +189,32 @@ function hangUp() {
 }
 $("#hangup").addEventListener("click", hangUp);
 
-// Speech recognition (Chrome / Edge). Falls back to typing where unsupported.
+// Speech recognition (Chrome / Edge) in the chosen caller language; typing works everywhere.
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!Recognition) $("#mic").hidden = true;
 $("#mic").addEventListener("click", () => {
   const rec = new Recognition();
-  rec.lang = "en-GB"; rec.interimResults = true;
-  speechSynthesis?.cancel();
-  $("#mic").classList.add("listening"); setState("Listening…");
+  rec.lang = LANG_CODES[$("#call-lang").value] || "en-GB"; rec.interimResults = true;
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  $("#mic").classList.add("listening"); setState("Listening…", "listening");
   rec.onresult = (e) => {
     const r = e.results[e.results.length - 1];
     $("#say").value = r[0].transcript;
     if (r.isFinal) $("#talk").requestSubmit();
   };
-  rec.onerror = (e) => { if (e.error !== "no-speech") toast(`Microphone: ${e.error}`); };
-  rec.onend = () => { $("#mic").classList.remove("listening"); if (callId && $("#call-state").textContent === "Listening…") setState("On call"); };
+  rec.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") toast(`Microphone: ${e.error}`); };
+  rec.onend = () => { $("#mic").classList.remove("listening"); if (callId && $("#phone").dataset.mode === "listening") setState("On call", "live"); };
   rec.start();
 });
 
-/* ---------- Setup ---------- */
-function blankCompany() {
-  const hours = Object.fromEntries(DAYS.map((d, i) => [d, i < 5 ? ["09:00", "17:00"] : null]));
-  return { name: "", industry: "", greeting: "", tone: "", services: "", faqs: "", appointmentMinutes: 30, hours, tasks: { bookings: true, messages: true, transfers: false, spamFilter: true }, departments: [] };
-}
-function deptRow(d = { name: "", contact: "" }) {
-  const row = h("div", { class: "dept" },
-    h("input", { placeholder: "Department (e.g. Sales)", maxlength: "40", "data-k": "name" }),
-    h("input", { placeholder: "Who answers (e.g. Daniel)", maxlength: "80", "data-k": "contact" }),
-    h("button", { type: "button", class: "ghost", "aria-label": "Remove" }, "✕"));
-  row.querySelector('[data-k="name"]').value = d.name;
-  row.querySelector('[data-k="contact"]').value = d.contact;
-  row.querySelector("button").addEventListener("click", () => row.remove());
-  return row;
-}
-function fillSetup(c) {
-  const f = $("#setup");
-  for (const k of ["name", "industry", "greeting", "tone", "services", "faqs", "appointmentMinutes"]) f.elements[k].value = c[k] ?? "";
-  for (const t of ["bookings", "messages", "transfers", "spamFilter"]) f.elements[`task-${t}`].checked = Boolean(c.tasks?.[t]);
-  $("#hours").replaceChildren(...DAYS.map((d) => {
-    const open = Boolean(c.hours[d]);
-    const row = h("div", { class: "day" },
-      h("label", { class: "check" }, h("input", { type: "checkbox", "data-day": d }), DAY_LABEL[d]),
-      h("input", { type: "time", "data-open": d, value: c.hours[d]?.[0] ?? "09:00" }),
-      h("span", {}, "to"),
-      h("input", { type: "time", "data-close": d, value: c.hours[d]?.[1] ?? "17:00" }));
-    row.querySelector("[data-day]").checked = open;
-    row.classList.toggle("closed", !open);
-    row.querySelector("[data-day]").addEventListener("change", (e) => row.classList.toggle("closed", !e.target.checked));
-    return row;
-  }));
-  $("#departments").replaceChildren(...(c.departments || []).map(deptRow));
-  $("#delete").hidden = !current;
-  $("#saved").textContent = "";
-}
-$("#add-dept").addEventListener("click", () => $("#departments").append(deptRow()));
-
-$("#setup").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const f = e.target, body = { hours: {}, tasks: {}, departments: [] };
-  for (const k of ["name", "industry", "greeting", "tone", "services", "faqs"]) body[k] = f.elements[k].value;
-  body.appointmentMinutes = Number(f.elements.appointmentMinutes.value);
-  for (const t of ["bookings", "messages", "transfers", "spamFilter"]) body.tasks[t] = f.elements[`task-${t}`].checked;
-  for (const d of DAYS) body.hours[d] = f.querySelector(`[data-day="${d}"]`).checked ? [f.querySelector(`[data-open="${d}"]`).value, f.querySelector(`[data-close="${d}"]`).value] : null;
-  body.departments = [...$("#departments").children].map((r) => ({ name: r.querySelector('[data-k="name"]').value, contact: r.querySelector('[data-k="contact"]').value }));
-  try {
-    const saved = current ? await api("PUT", `/api/companies/${current.id}`, body) : await api("POST", "/api/companies", body);
-    await loadCompanies(saved.id);
-    $("#saved").textContent = "Saved ✓";
-  } catch (err) { toast(err.message); }
-});
-
-$("#delete").addEventListener("click", async () => {
-  if (!current) return;
-  const btn = $("#delete");
-  if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "Click again to delete everything for this business"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "Delete business"; }, 4000); return; }
-  await api("DELETE", `/api/companies/${current.id}`).catch((e) => toast(e.message));
-  btn.dataset.confirm = ""; btn.textContent = "Delete business";
-  await loadCompanies();
-});
-
-/* ---------- Activity ---------- */
-const when = (iso) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const empty = (msg) => h("p", { class: "empty" }, msg);
-async function loadActivity() {
-  if (!current) return;
-  const a = await api("GET", `/api/companies/${current.id}/activity`).catch((e) => (toast(e.message), null));
-  if (!a) return;
-  $("#act-bookings").replaceChildren(...(a.bookings.length ? a.bookings.map((b) => h("div", { class: "row" }, h("b", {}, `${b.date} ${b.time}`), ` ${b.callerName} · ${b.phone}`, h("small", {}, b.reason))) : [empty("No bookings yet.")]));
-  $("#act-messages").replaceChildren(...(a.messages.length ? a.messages.map((m) => h("div", { class: `row ${m.urgency}` }, h("b", {}, `For ${m.forWhom}`), ` from ${m.callerName} · ${m.phone}`, h("small", {}, `${m.urgency} · ${m.message}`))) : [empty("No messages yet.")]));
-  $("#act-transfers").replaceChildren(...(a.transfers.length ? a.transfers.map((t) => h("div", { class: "row" }, h("b", {}, t.department), ` (${t.contact}) · ${t.callerName}`, h("small", {}, t.reason))) : [empty("No transfers yet.")]));
-  $("#act-calls").replaceChildren(...(a.calls.length ? a.calls.map((c) => h("details", { class: "call" },
-    h("summary", {}, h("span", { class: `badge ${c.outcome || "live"}` }, (c.outcome || "in progress").replaceAll("_", " ")), ` ${when(c.startedAt)} — ${c.summary || "No summary yet."}`),
-    h("ol", {}, ...(c.transcript || []).map((t) => h("li", { class: t.who }, h("b", {}, t.who === "caller" ? "Caller: " : "Receptionist: "), t.text))))) : [empty("No calls yet.")]));
-}
-
 /* ---------- Start ---------- */
-api("GET", "/api/status").then((s) => {
-  const el = $("#key-status");
-  el.textContent = s.apiKeyConfigured ? "● API key set" : "● No API key — calls won't work yet";
-  el.classList.add(s.apiKeyConfigured ? "ok" : "warn");
-}).catch(() => {});
-loadCompanies().catch((e) => toast(e.message));
+(async () => {
+  try {
+    state.meta = await api("GET", "/api/meta");
+    initSetup({ saved: (company) => reload(company?.id).then(() => company && showTab("setup")) });
+    initDiary();
+    await reload();
+    const s = await api("GET", "/api/status");
+    $("#key-status").replaceChildren(h("span", { class: `dot ${s.apiKeyConfigured ? "ok" : "warn"}` }), s.apiKeyConfigured ? "Claude connected" : "No API key — add it to .env");
+  } catch (e) { toast(e.message); }
+})();
