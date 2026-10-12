@@ -1,0 +1,38 @@
+{
+  "companies": [
+    {
+      "id": "hartley-grove",
+      "name": "Hartley & Grove",
+      "industry": "Estate agency",
+      "greeting": "Good morning, Hartley & Grove estate agents, this is Ava speaking. How can I help?",
+      "tone": "Warm, professional and efficient. British English.",
+      "services": "Property sales, lettings and property management in Essex. Free market valuations (in person, about 45 minutes). Accompanied viewings for properties on our books.",
+      "faqs": "Office: 12 High Street, Grays, Essex RM17 6XX.\nValuations are free and take about 45 minutes at the property.\nLettings fees: 10% + VAT of monthly rent for tenant-find; 14% + VAT for fully managed.\nWe do not give property values over the phone - offer a free valuation instead.\nParking: free 1-hour bays outside the office.",
+      "appointmentMinutes": 45,
+      "hours": { "mon": ["09:00", "17:30"], "tue": ["09:00", "17:30"], "wed": ["09:00", "17:30"], "thu": ["09:00", "17:30"], "fri": ["09:00", "17:30"], "sat": ["10:00", "14:00"], "sun": null },
+      "tasks": { "bookings": true, "messages": true, "transfers": true, "spamFilter": true },
+      "departments": [
+        { "name": "Sales", "contact": "Daniel Hartley" },
+        { "name": "Lettings", "contact": "Priya Grove" },
+        { "name": "Accounts", "contact": "accounts team" }
+      ]
+    },
+    {
+      "id": "brightsmile-dental",
+      "name": "BrightSmile Dental",
+      "industry": "Dental clinic",
+      "greeting": "Hello, BrightSmile Dental, you're speaking to the reception assistant. How can I help you today?",
+      "tone": "Calm, reassuring and friendly. Patients may be nervous or in pain.",
+      "services": "Check-ups (£45), hygienist cleaning (£60), fillings, whitening, emergency appointments for pain or swelling (same day where possible). NHS and private patients.",
+      "faqs": "Address: 4 Castle Street, Canterbury CT1 2QF.\nCancellations need 24 hours' notice or a £20 fee applies.\nFor severe swelling affecting breathing or swallowing, the caller must call 999 or go to A&E - do not book them, tell them this immediately.\nWe cannot give medical advice over the phone beyond booking.",
+      "appointmentMinutes": 30,
+      "hours": { "mon": ["08:30", "18:00"], "tue": ["08:30", "18:00"], "wed": ["08:30", "18:00"], "thu": ["08:30", "20:00"], "fri": ["08:30", "16:00"], "sat": null, "sun": null },
+      "tasks": { "bookings": true, "messages": true, "transfers": false, "spamFilter": true },
+      "departments": []
+    }
+  ],
+  "bookings": [],
+  "messages": [],
+  "transfers": [],
+  "calls": []
+}
